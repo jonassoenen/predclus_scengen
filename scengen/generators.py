@@ -35,7 +35,7 @@ class PredClusGenerator:
 
         # record the 'clustering' of the training time series
         # dataframe to be able to use groupby
-        self.clustering = pd.Series(self.tree.apply(attributes), dtype = 'int')
+        self.clustering = pd.Series(self.tree.apply(attributes), dtype='int')
 
     def generate(self, attributes: np.ndarray, nb_of_samples: int):
         """
@@ -47,12 +47,24 @@ class PredClusGenerator:
 
         # for each prediction, take samples from the correct leaf
         cluster_dict = self.clustering_dict
-        samples = np.zeros((attributes.shape[0], nb_of_samples), dtype = 'int')
+        samples = np.zeros((attributes.shape[0], nb_of_samples), dtype='int')
         for i, prediction in enumerate(predictions):
             cluster = cluster_dict[prediction]
             samples[i, :] = np.random.choice(cluster, size=nb_of_samples, replace=True)
 
         return samples
+
+
+class RandomGenerator:
+    def __init__(self):
+        self.nb_of_timeseries = None
+
+    def fit(self, attributes, timeseries):
+        self.nb_of_timeseries = timeseries.shape[0]
+
+    def generate(self, attributes, nb_of_samples=250):
+        return np.random.randint(0, self.nb_of_timeseries, size=(attributes.shape[0], nb_of_samples))
+
 
 class SampleGenerator:
     """
@@ -60,6 +72,7 @@ class SampleGenerator:
         if you don't want to keep track of the training data yourself, this class wraps any generator producing indices
         and converts them to real data samples
     """
+
     def __init__(self, generator):
         self.generator = generator
 
@@ -72,11 +85,11 @@ class SampleGenerator:
         # save the training data
         self.time_series = timeseries
 
-    def generate_timeseries(self, attributes, nb_samples):
+    def generate_timeseries(self, attributes, nb_of_samples=250):
         """
             generates time series from the underlying generator
             return value is an array (#test instances, #samples, #dimensions)
         """
-        sample_indices = self.generator.generate(attributes, nb_samples)
+        sample_indices = self.generator.generate(attributes, nb_of_samples)
         sample_timeseries = self.time_series[sample_indices]
         return sample_timeseries
