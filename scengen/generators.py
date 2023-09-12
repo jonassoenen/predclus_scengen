@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
 
+from scengen.vis.tree import VisTree
+
 
 class PredClusGenerator:
     def __init__(self, sklearn_tree):
@@ -9,6 +11,8 @@ class PredClusGenerator:
         self._clustering = None
         self._clustering_dict = None
 
+    def to_visualization_tree(self, attribute_df):
+        return VisTree.from_sklearn_tree(self.tree.tree_, attribute_df)
     @property
     def clustering(self):
         """

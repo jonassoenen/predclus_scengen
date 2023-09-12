@@ -1,8 +1,11 @@
 import copy
 from collections import deque
 from typing import Tuple, Optional, List
+import pandas as pd
+import altair as alt
 
 import numpy as np
+from scipy.stats import gaussian_kde
 
 
 class VisTree:
@@ -10,9 +13,9 @@ class VisTree:
         self.root_node = root_node
 
     @classmethod
-    def from_sklearn_tree(cls, sklearn_tree, attributes, feature_names):
-        instances = np.arange(0, attributes.shape[0], 1)
-        root_node = sklearn_tree_to_nodes(sklearn_tree, 0, instances, attributes, feature_names)
+    def from_sklearn_tree(cls, sklearn_tree, attribute_df):
+        instances = np.arange(0, attribute_df.shape[0], 1)
+        root_node = sklearn_tree_to_nodes(sklearn_tree, 0, instances, attribute_df)
         return VisTree(root_node)
 
     def plot_tree(self, figsize = (20,25)):
@@ -113,18 +116,19 @@ class Node:
         self._parent: Optional[Node] = None
 
 
-    def bounds_to_split_str(self, lower, upper):
+    def bounds_to_split_str(self, lower, upper, include_name = True):
+        name = self.split_attribute_name if include_name else ' '
         if np.isinf(lower) and len(self.children) == 2:
-            return f"{self.split_attribute_name} <= {upper}"
+            return f"{name} ≤ {upper:.2f}"
         elif np.isinf(upper) and len(self.children) == 2:
-            return f"{self.split_attribute_name} > {lower}"
+            return f"{name} > {lower:.2f}"
         else:
-            return f"{lower} < {self.split_attribute_name} <= {upper}"
+            return f"{lower:.2f} < {name} ≤ {upper:.2f}"
 
     @property
     def split_strings(self):
         for lower, upper, _ in self.children:
-            yield self.bounds_to_split_str(lower, upper)
+            yield self.bounds_to_split_str(lower, upper, include_name=False)
     @property
     def parent(self):
         return self._parent
@@ -154,6 +158,39 @@ class Node:
 
                 print(f"{prefix} -  {self.bounds_to_split_str(lower, upper)}")
                 child.print(prefix + '\t')
+
+    def plot_attribute_distribution(self, attribute_df, local = True):
+        if local:
+            data_points = attribute_df.loc[self.instances, self.split_attribute_name].to_numpy()
+        else:
+            data_points = attribute_df[self.split_attribute_name].to_numpy()
+        # for continuous calculate kde
+        kde = gaussian_kde(data_points)
+        min, max = np.min(data_points), np.max(data_points)
+        plot_df = pd.DataFrame().assign(
+            x = np.linspace(min, max, 100),
+            kde = lambda df: kde(df.x)
+        )
+        kde_chart = alt.Chart(plot_df).mark_area().encode(
+            x = alt.X('x',  title = self.split_attribute_name),
+            y = 'kde'
+        )
+
+        bounds = set()
+        for lower, upper, _ in self.children:
+            if not np.isinf(lower):
+                bounds.add(lower)
+            if not np.isinf(upper):
+                bounds.add(upper)
+
+        bounds_df = pd.DataFrame(dict(threshold = list(bounds)))
+
+        vline_chart = alt.Chart(bounds_df).mark_rule().encode(
+            x = 'threshold'
+        )
+
+        return alt.layer(kde_chart, vline_chart)
+
 
     def __hash__(self):
         return hash((str(self.instances), self.split_attribute_name))
@@ -226,27 +263,27 @@ def compress_first_split(tree_to_compress: Node):
     return subtrees
 
 
-def sklearn_tree_to_nodes(tree, node_idx, instances, attributes, feature_names):
-    feature_idx = tree.feature
-    feature_threshold = tree.threshold
+def sklearn_tree_to_nodes(tree, node_idx, instances, attribute_df):
+    feature_idx = tree.feature[node_idx]
+    feature_threshold = tree.threshold[node_idx]
 
     is_leaf_node = tree.children_left[node_idx] == tree.children_right[node_idx]
     if is_leaf_node:
         return Node(instances, None, None)
     else:
-        test = attributes[:, feature_idx] <= feature_threshold
-        left_attributes = attributes[test]
+        test = attribute_df.iloc[:, feature_idx] <= feature_threshold
+        left_attributes = attribute_df[test]
         left_instances = instances[test]
         left_node_idx = tree.children_left[node_idx]
-        left_subtree = sklearn_tree_to_nodes(tree, left_node_idx, left_instances, left_attributes, feature_names)
+        left_subtree = sklearn_tree_to_nodes(tree, left_node_idx, left_instances, left_attributes)
 
-        right_attributes = attributes[~test]
+        right_attributes = attribute_df[~test].copy()
         right_instances = instances[~test]
         right_node_idx = tree.children_right[node_idx]
-        right_subtree = sklearn_tree_to_nodes(tree, right_node_idx, right_instances, right_attributes, feature_names)
+        right_subtree = sklearn_tree_to_nodes(tree, right_node_idx, right_instances, right_attributes)
 
         children = [
-            (None, feature_threshold, left_subtree),
-            (feature_threshold, None, right_subtree)
+            (-np.infty, feature_threshold, left_subtree),
+            (feature_threshold, np.infty, right_subtree)
         ]
-        return Node(instances, children, feature_names[feature_idx])
+        return Node(instances, children, attribute_df.columns[feature_idx])
