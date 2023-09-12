@@ -1,4 +1,8 @@
 import unittest
+
+import pytest
+from matplotlib import pyplot as plt
+
 from scengen.vis.tree import VisTree, Node
 import numpy as np
 
@@ -128,3 +132,37 @@ def test_print_tree():
     print()
     tree.compress_tree().print_tree()
 
+@pytest.mark.skip(reason="this blocks the testing")
+def test_plot_tree():
+    child = [Node(np.array([i]), None, None) for i in range(4)]
+    first_node = Node(
+        np.array([0,1]),
+        [
+            (-np.infty, 5, child[0]),
+            (5, np.infty, child[1]),
+        ],
+        'A'
+    )
+    second_node = Node(
+        np.array([0, 1]),
+        [
+            (-np.infty, 5, child[2]),
+            (5, np.infty, child[3]),
+        ],
+        'B'
+    )
+    root_node = Node(
+        np.arange(0,4),
+        [
+            (-np.infty, 10, first_node),
+            (10, np.infty, second_node)
+        ],
+        'A'
+    )
+    tree = VisTree(root_node)
+
+    tree.plot_tree()
+    plt.show()
+
+if __name__ == '__main__':
+    test_print_tree()

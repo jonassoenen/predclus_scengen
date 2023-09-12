@@ -15,11 +15,80 @@ class VisTree:
         root_node = sklearn_tree_to_nodes(sklearn_tree, 0, instances, attributes, feature_names)
         return VisTree(root_node)
 
-    def plot_tree(self):
-        pass
+    def plot_tree(self, figsize = (20,25)):
+        import matplotlib.pyplot as plt
+        # figure configuration
+        plt.figure(figsize = figsize)
+        plt.axis('off')
+
+        # find all children in order
+        leafs = []
+        queue = deque([self.root_node])
+        while len(queue)>0:
+            node = queue.pop()
+            if node.is_leaf_node:
+                leafs.append(node)
+            else:
+                queue.extend(child for _, _, child in node.children)
+
+        x_pos = 400
+        y_interval = 10
+        x_interval = 30
+
+        # first position the leaf nodes
+        positions = {leaf: (x_pos, y) for leaf, y in zip(leafs, range(0, len(leafs)*y_interval + 1, y_interval))}
+
+        # draw the leaf nodes
+        for leaf, (x, y) in positions.items():
+            plt.text(x, y, 'leaf', horizontalalignment='center', verticalalignment='center',
+                 bbox=dict(boxstyle="Circle, pad=0.2", facecolor='white'))
+
+        # check which parents can be drawn
+        # a parent can be drawn if all of its children have a known position
+        parents_to_draw = set()
+        for leaf in leafs:
+            if leaf.parent is None:
+                continue
+            siblings = leaf.parent.children
+            if all(sibling in positions for _, _, sibling in siblings):
+                parents_to_draw.add(leaf.parent)
+
+
+        # draw parents one after another
+        queue = deque(parents_to_draw)
+        while len(queue)>0:
+            node_to_draw = queue.popleft()
+
+            # determine parent position based on children positions
+            children_positions = [positions[child] for _, _, child in node_to_draw.children]
+            split_descriptions = list(node_to_draw.split_strings)
+            y_min = min(y for x, y in children_positions)
+            y_max = max(y for x, y in children_positions)
+            x_min = min(x for x, y in children_positions)
+
+            # draw horizontal line from every child with splitting criterion
+            for (x, y), split in zip(children_positions, split_descriptions):
+                plt.plot([x, x_min - x_interval], [y, y], color='black')
+                plt.text((x_min - x_interval) + x_interval / 3, y, split, verticalalignment='bottom',
+                         horizontalalignment='left')
+
+            # plot vertical line connecting all horizontal lines
+            plt.plot([x_min - x_interval, x_min - x_interval], [y_min, y_max], color='black')
+
+            # attribute text in the middle of the split
+            plt.text(x_min - x_interval, (y_min + y_max) / 2, node_to_draw.split_attribute_name, verticalalignment='center',
+                     horizontalalignment='center', bbox={'facecolor': 'white', 'pad': 2})
+
+            # Save the position
+            positions[node_to_draw] = (x_min - x_interval, (y_min + y_max) / 2)
+
+            ## Check if parent becomes draweable
+            if node_to_draw.parent is not None and all(child in positions for _, _, child in node_to_draw.parent.children):
+                queue.append(node_to_draw.parent)
+
 
     def print_tree(self):
-        self.root_node.print(prefix = '')
+            self.root_node.print(prefix = '')
 
     def compress_tree(self):
         return VisTree(get_tree_with_compressed_splits(self.root_node))
@@ -36,6 +105,43 @@ class Node:
         self.instances: np.ndarray = instances
         self.split_attribute_name: Optional[str] = split_attribute_name
 
+        # initialize parent pointers in children
+        if self.children is not None:
+            for _, _, child in self.children:
+                child.parent = self
+
+        self._parent: Optional[Node] = None
+
+
+    def bounds_to_split_str(self, lower, upper):
+        if np.isinf(lower) and len(self.children) == 2:
+            return f"{self.split_attribute_name} <= {upper}"
+        elif np.isinf(upper) and len(self.children) == 2:
+            return f"{self.split_attribute_name} > {lower}"
+        else:
+            return f"{lower} < {self.split_attribute_name} <= {upper}"
+
+    @property
+    def split_strings(self):
+        for lower, upper, _ in self.children:
+            yield self.bounds_to_split_str(lower, upper)
+    @property
+    def parent(self):
+        return self._parent
+
+    @parent.setter
+    def parent(self, new_parent):
+        if not isinstance(new_parent, Node):
+            raise ValueError
+
+        # check if this node is child of the given parent
+        is_child = any(child is self for _, _, child in new_parent.children)
+        if is_child:
+            self._parent = new_parent
+        else:
+            raise ValueError("Trying to set parent that doesn't have this node as child")
+
+
     @property
     def is_leaf_node(self):
         return self.children is None
@@ -45,17 +151,12 @@ class Node:
             pass
         else:
             for lower, upper, child in self.children:
-                if np.isinf(lower) and len(self.children) == 2:
-                    test_str = f"{self.split_attribute_name} <= {upper}"
-                elif np.isinf(upper) and len(self.children) == 2:
-                    test_str = f"{self.split_attribute_name} > {lower}"
-                else:
-                    test_str = f"{lower} < {self.split_attribute_name} <= {upper}"
-                print(f"{prefix} -  {test_str}")
+
+                print(f"{prefix} -  {self.bounds_to_split_str(lower, upper)}")
                 child.print(prefix + '\t')
 
     def __hash__(self):
-        return hash((self.instances, self.split_attribute_name, self.children))
+        return hash((str(self.instances), self.split_attribute_name))
 
     def __eq__(self, other):
         if not isinstance(other, Node):
@@ -78,7 +179,7 @@ class Node:
 
 def get_tree_with_compressed_splits(tree_node: Node):
     if tree_node.is_leaf_node:
-        return tree_node
+        return copy.deepcopy(tree_node)
 
     # check whether we can compress the current split
     # the split can be compressed if one of the children splits on the same attribute as this node
