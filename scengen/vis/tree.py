@@ -121,6 +121,8 @@ class Node:
 
     def init_descriptions(self, parent_description):
         self.description = parent_description
+        if self.is_leaf_node:
+            return
         for lower, upper, child in self.children:
             description = parent_description+' ∧ '+self.bounds_to_split_str(lower, upper)
             child.init_descriptions(description)
@@ -167,8 +169,44 @@ class Node:
                 print(f"{prefix} -  {self.bounds_to_split_str(lower, upper)}")
                 child.print(prefix + '\t')
 
-    def plot_timeseries(self, timeseries):
-        pass
+    def plot_children(self, timeseries_df):
+        charts = []
+        for lower, upper, child in self.children:
+            charts.append(
+                child.plot_timeseries_quantiles(timeseries_df).properties(title = self.bounds_to_split_str(lower, upper)))
+        return alt.hconcat(*charts).resolve_scale(x = 'shared', y= 'shared', color = 'shared')
+
+    def plot_timeseries(self, timeseries, max_instances_to_show = 10):
+        relevant_timeseries = timeseries.iloc[self.instances[:max_instances_to_show]]
+        plot_df = (
+            relevant_timeseries
+            .stack()
+            .rename_axis(['timeseries', 'timestamp'], axis = 0)
+            .to_frame('value')
+            .reset_index()
+        )
+        return alt.Chart(plot_df).mark_line().encode(
+            x = alt.X('timestamp',  axis=alt.Axis(format="%H:%M")),
+            y = 'value',
+            color = alt.Color('timeseries:Q', legend = None)
+        )
+
+    def plot_timeseries_quantiles(self, timeseries_df):
+        data_df = timeseries_df.iloc[self.instances]
+        quantile_df = data_df_to_quantiles(data_df)
+        return (
+            alt.Chart(quantile_df)
+            .mark_area()
+            .encode(
+                x=alt.X("timestamp", axis = alt.Axis(format="%H:%M")),
+                y=alt.Y(
+                    "min:Q", title="consumption (kWh)", axis=alt.Axis(format=".2f")
+                ),
+                y2="max:Q",
+                color="quantiles:O",
+            )
+        )
+
 
     def plot_feature_correlations(self, attribute_df, n = 10, local = True):
         if local:
@@ -317,3 +355,42 @@ def sklearn_tree_to_nodes(tree, node_idx, instances, attribute_df):
             (feature_threshold, np.infty, right_subtree)
         ]
         return Node(instances, children, attribute_df.columns[feature_idx])
+
+def data_df_to_quantiles(data_df, quantiles = None):
+    # q = np.concatenate([np.arange(0, 0.05, 0.01), np.arange(0.05, 0.96, 0.05), np.arange(0.95, 1.005, 0.01)])
+    if quantiles is None:
+        q = np.arange(0, 1.01, 0.05)
+    else:
+        q = quantiles
+
+    quantiles = data_df.quantile(q, interpolation="nearest").set_axis(
+        (q * 100).astype("int"), axis=0
+    )
+    lower_quantiles = (
+        quantiles.loc[:49, :]
+        .stack()
+        .to_frame("min")
+        .rename_axis(index=["lower_quantile", "timestamp"])
+    )
+    upper_quantiles = (
+        quantiles.loc[51:, :]
+        .stack()
+        .to_frame("max")
+        .reset_index(level=0)
+        .rename(columns={"level_0": "upper_quantile"})
+        .assign(lower_quantile=lambda x: 100 - x.upper_quantile)
+        .set_index("lower_quantile", append=True)
+        .swaplevel(0, 1)
+        .sort_index()
+        .rename_axis(index=["lower_quantile", "timestamp"])
+    )
+    return (
+        lower_quantiles.join(upper_quantiles)
+        .reset_index()
+        .assign(
+            quantiles=lambda x: x.lower_quantile.astype("str").str.zfill(2)
+            + "-"
+            + x.upper_quantile.astype("str").str.zfill(2)
+        )
+        .drop(columns=["lower_quantile", "upper_quantile"])
+    )
