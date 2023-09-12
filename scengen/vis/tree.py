@@ -12,6 +12,9 @@ class VisTree:
     def __init__(self, root_node):
         self.root_node = root_node
 
+        # self.root_node.check_validity()
+        self.root_node.init_descriptions(parent_description = '')
+
     @classmethod
     def from_sklearn_tree(cls, sklearn_tree, attribute_df):
         instances = np.arange(0, attribute_df.shape[0], 1)
@@ -114,8 +117,13 @@ class Node:
                 child.parent = self
 
         self._parent: Optional[Node] = None
+        self.description: Optional[str] = None
 
-
+    def init_descriptions(self, parent_description):
+        self.description = parent_description
+        for lower, upper, child in self.children:
+            description = parent_description+' ∧ '+self.bounds_to_split_str(lower, upper)
+            child.init_descriptions(description)
     def bounds_to_split_str(self, lower, upper, include_name = True):
         name = self.split_attribute_name if include_name else ' '
         if np.isinf(lower) and len(self.children) == 2:
@@ -158,6 +166,28 @@ class Node:
 
                 print(f"{prefix} -  {self.bounds_to_split_str(lower, upper)}")
                 child.print(prefix + '\t')
+
+    def plot_timeseries(self, timeseries):
+        pass
+
+    def plot_feature_correlations(self, attribute_df, n = 10, local = True):
+        if local:
+            data_df = attribute_df.loc[self.instances]
+        else:
+            data_df = attribute_df
+        correlation_df = (
+            data_df.corrwith(data_df[self.split_attribute_name], method = 'spearman')
+            .drop(self.split_attribute_name)
+            .sort_values(ascending = False)
+            .iloc[:n]
+        )
+        # return correlation_df.to_frame('correlation').reset_index()
+
+        correlation_plot = alt.Chart(correlation_df.to_frame('correlation').reset_index()).mark_bar().encode(
+            y = alt.Y('index', sort = alt.EncodingSortField(field="correlation", order='descending')),
+            x = alt.X('correlation:Q', scale = alt.Scale(domain = [0,1]))
+        )
+        return correlation_plot
 
     def plot_attribute_distribution(self, attribute_df, local = True):
         if local:
