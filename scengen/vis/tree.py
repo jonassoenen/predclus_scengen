@@ -53,10 +53,10 @@ class VisTree:
         self.all_nodes = np.array(all_nodes, dtype='object')
         self.all_leafs = np.array(all_leafs, dtype='object')
 
-    def plot_tree(self, figsize=(20, 25)):
-        self.plot_subtree(self.root_node, figsize)
+    def plot_tree(self, figsize=(20, 25), max_depth = None):
+        self.plot_subtree(self.root_node, figsize, max_depth)
 
-    def plot_subtree(self, node, figsize=(20, 25)):
+    def plot_subtree(self, node, figsize=(20, 25), max_depth = None):
         # convert node id to node if required
         if isinstance(node, int):
             node = self.get_node(node)
@@ -69,13 +69,15 @@ class VisTree:
 
         # find all children in order
         leafs = []
-        queue = deque([node])
+        queue = deque([(node, 0)])
         while len(queue) > 0:
-            node = queue.pop()
-            if node.is_leaf_node:
+            node, depth = queue.pop()
+            if (max_depth is not None and depth == max_depth) or node.is_leaf_node:
                 leafs.append(node)
+            # if node.is_leaf_node:
+            #     leafs.append(node)
             else:
-                queue.extend(child for _, _, child in node.children)
+                queue.extend((child, depth+1) for _, _, child in node.children)
 
         x_pos = 400
         y_interval = 10
@@ -86,8 +88,13 @@ class VisTree:
 
         # draw the leaf nodes
         for leaf, (x, y) in positions.items():
-            plt.text(x, y, leaf.node_id, horizontalalignment='center', verticalalignment='center',
-                     bbox=dict(boxstyle="Circle, pad=0.35", facecolor='white'))
+            if leaf.is_leaf_node:
+                plt.text(x, y, leaf.node_id, horizontalalignment='center', verticalalignment='center',
+                         bbox=dict(boxstyle="Circle, pad=0.35", facecolor='white'))
+            else:
+                plt.text(x,y, 'tree cut...', verticalalignment='center',
+                     horizontalalignment='center', bbox={'facecolor': 'white', 'pad': 3})
+
 
         # check which parents can be drawn
         # a parent can be drawn if all of its children have a known position
