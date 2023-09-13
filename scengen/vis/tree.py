@@ -1,10 +1,10 @@
 import copy
 from collections import deque
 from typing import Tuple, Optional, List
-import pandas as pd
-import altair as alt
 
+import altair as alt
 import numpy as np
+import pandas as pd
 from scipy.stats import gaussian_kde
 
 
@@ -12,8 +12,12 @@ class VisTree:
     def __init__(self, root_node):
         self.root_node = root_node
 
+        self.all_nodes = None
+        self.all_leafs = None
+
         # self.root_node.check_validity()
-        self.root_node.init_descriptions(parent_description = '')
+        self.root_node.init_descriptions(parent_description='')
+        self.set_node_ids()
 
     @classmethod
     def from_sklearn_tree(cls, sklearn_tree, attribute_df):
@@ -21,16 +25,45 @@ class VisTree:
         root_node = sklearn_tree_to_nodes(sklearn_tree, 0, instances, attribute_df)
         return VisTree(root_node)
 
-    def plot_tree(self, figsize = (20,25)):
+    def get_node(self, node_id):
+        return self.all_nodes[node_id]
+
+    def get_leaf(self, leaf_id):
+        return self.all_leafs[leaf_id]
+
+    def set_node_ids(self):
+        # assign node ids in breath first fashion
+        current_node_id = 0
+        all_nodes = []
+        current_leaf_id = 0
+        all_leafs = []
+        queue = deque([self.root_node])
+        while len(queue) > 0:
+            node = queue.popleft()
+            if node.is_leaf_node:
+                node.node_id = current_leaf_id
+                all_leafs.append(node)
+                current_leaf_id += 1
+            else:
+                node.node_id = current_node_id
+                all_nodes.append(node)
+                current_node_id += 1
+                queue.extend(child for _, _, child in node.children)
+
+        self.all_nodes = np.array(all_nodes, dtype='object')
+        self.all_leafs = np.array(all_leafs, dtype='object')
+
+    def plot_tree(self, figsize=(20, 25)):
         import matplotlib.pyplot as plt
         # figure configuration
-        plt.figure(figsize = figsize)
+        fig = plt.figure(figsize=figsize)
+
         plt.axis('off')
 
         # find all children in order
         leafs = []
         queue = deque([self.root_node])
-        while len(queue)>0:
+        while len(queue) > 0:
             node = queue.pop()
             if node.is_leaf_node:
                 leafs.append(node)
@@ -42,12 +75,13 @@ class VisTree:
         x_interval = 30
 
         # first position the leaf nodes
-        positions = {leaf: (x_pos, y) for leaf, y in zip(leafs, range(0, len(leafs)*y_interval + 1, y_interval))}
+        positions = {leaf: (x_pos, y) for leaf, y in zip(leafs, range(0, len(leafs) * y_interval + 1, y_interval))}
 
         # draw the leaf nodes
         for leaf, (x, y) in positions.items():
-            plt.text(x, y, 'leaf', horizontalalignment='center', verticalalignment='center',
-                 bbox=dict(boxstyle="Circle, pad=0.2", facecolor='white'))
+            plt.text(x, y, leaf.node_id, horizontalalignment='center', verticalalignment='center',
+                     bbox=dict(boxstyle="Circle, pad=0.35", facecolor='white'))
+
 
         # check which parents can be drawn
         # a parent can be drawn if all of its children have a known position
@@ -59,10 +93,10 @@ class VisTree:
             if all(sibling in positions for _, _, sibling in siblings):
                 parents_to_draw.add(leaf.parent)
 
-
         # draw parents one after another
         queue = deque(parents_to_draw)
-        while len(queue)>0:
+
+        while len(queue) > 0:
             node_to_draw = queue.popleft()
 
             # determine parent position based on children positions
@@ -82,19 +116,25 @@ class VisTree:
             plt.plot([x_min - x_interval, x_min - x_interval], [y_min, y_max], color='black')
 
             # attribute text in the middle of the split
-            plt.text(x_min - x_interval, (y_min + y_max) / 2, node_to_draw.split_attribute_name, verticalalignment='center',
-                     horizontalalignment='center', bbox={'facecolor': 'white', 'pad': 2})
+            t=plt.text(x_min - x_interval, (y_min + y_max) / 2, f"{node_to_draw.split_attribute_name}",
+                     verticalalignment='center',
+                     horizontalalignment='center', bbox={'facecolor': 'white', 'pad': 3})
+
+            # plot node id in gray
+            plt.text(x_min - x_interval+10, (y_min + y_max) / 2, node_to_draw.node_id, verticalalignment='center',
+                     horizontalalignment='left', color = 'gray')
+
 
             # Save the position
             positions[node_to_draw] = (x_min - x_interval, (y_min + y_max) / 2)
 
             ## Check if parent becomes draweable
-            if node_to_draw.parent is not None and all(child in positions for _, _, child in node_to_draw.parent.children):
+            if node_to_draw.parent is not None and all(
+                    child in positions for _, _, child in node_to_draw.parent.children):
                 queue.append(node_to_draw.parent)
 
-
     def print_tree(self):
-            self.root_node.print(prefix = '')
+        self.root_node.print(prefix='')
 
     def compress_tree(self):
         return VisTree(get_tree_with_compressed_splits(self.root_node))
@@ -118,15 +158,17 @@ class Node:
 
         self._parent: Optional[Node] = None
         self.description: Optional[str] = None
+        self.node_id: Optional[int] = None
 
     def init_descriptions(self, parent_description):
         self.description = parent_description
         if self.is_leaf_node:
             return
         for lower, upper, child in self.children:
-            description = parent_description+' ∧ '+self.bounds_to_split_str(lower, upper)
+            description = parent_description + ' ∧ ' + self.bounds_to_split_str(lower, upper)
             child.init_descriptions(description)
-    def bounds_to_split_str(self, lower, upper, include_name = True):
+
+    def bounds_to_split_str(self, lower, upper, include_name=True):
         name = self.split_attribute_name if include_name else ' '
         if np.isinf(lower) and len(self.children) == 2:
             return f"{name} ≤ {upper:.2f}"
@@ -139,6 +181,7 @@ class Node:
     def split_strings(self):
         for lower, upper, _ in self.children:
             yield self.bounds_to_split_str(lower, upper, include_name=False)
+
     @property
     def parent(self):
         return self._parent
@@ -155,40 +198,38 @@ class Node:
         else:
             raise ValueError("Trying to set parent that doesn't have this node as child")
 
-
     @property
     def is_leaf_node(self):
         return self.children is None
 
     def print(self, prefix):
         if self.is_leaf_node:
-            pass
+            print(f'{prefix} ⤇ leaf {self.node_id}')
         else:
             for lower, upper, child in self.children:
-
-                print(f"{prefix} -  {self.bounds_to_split_str(lower, upper)}")
+                print(f"{prefix}({self.node_id}) {self.bounds_to_split_str(lower, upper)}")
                 child.print(prefix + '\t')
 
     def plot_children(self, timeseries_df):
         charts = []
         for lower, upper, child in self.children:
             charts.append(
-                child.plot_timeseries_quantiles(timeseries_df).properties(title = self.bounds_to_split_str(lower, upper)))
-        return alt.hconcat(*charts).resolve_scale(x = 'shared', y= 'shared', color = 'shared')
+                child.plot_timeseries_quantiles(timeseries_df).properties(title=self.bounds_to_split_str(lower, upper)))
+        return alt.hconcat(*charts).resolve_scale(x='shared', y='shared', color='shared')
 
-    def plot_timeseries(self, timeseries, max_instances_to_show = 10):
+    def plot_timeseries(self, timeseries, max_instances_to_show=10):
         relevant_timeseries = timeseries.iloc[self.instances[:max_instances_to_show]]
         plot_df = (
             relevant_timeseries
             .stack()
-            .rename_axis(['timeseries', 'timestamp'], axis = 0)
+            .rename_axis(['timeseries', 'timestamp'], axis=0)
             .to_frame('value')
             .reset_index()
         )
         return alt.Chart(plot_df).mark_line().encode(
-            x = alt.X('timestamp',  axis=alt.Axis(format="%H:%M")),
-            y = 'value',
-            color = alt.Color('timeseries:Q', legend = None)
+            x=alt.X('timestamp', axis=alt.Axis(format="%H:%M")),
+            y='value',
+            color=alt.Color('timeseries:Q', legend=None)
         )
 
     def plot_timeseries_quantiles(self, timeseries_df):
@@ -198,7 +239,7 @@ class Node:
             alt.Chart(quantile_df)
             .mark_area()
             .encode(
-                x=alt.X("timestamp", axis = alt.Axis(format="%H:%M")),
+                x=alt.X("timestamp", axis=alt.Axis(format="%H:%M")),
                 y=alt.Y(
                     "min:Q", title="consumption (kWh)", axis=alt.Axis(format=".2f")
                 ),
@@ -207,27 +248,26 @@ class Node:
             )
         )
 
-
-    def plot_feature_correlations(self, attribute_df, n = 10, local = True):
+    def plot_feature_correlations(self, attribute_df, n=10, local=True):
         if local:
             data_df = attribute_df.loc[self.instances]
         else:
             data_df = attribute_df
         correlation_df = (
-            data_df.corrwith(data_df[self.split_attribute_name], method = 'spearman')
+            data_df.corrwith(data_df[self.split_attribute_name], method='spearman')
             .drop(self.split_attribute_name)
-            .sort_values(ascending = False)
+            .sort_values(ascending=False)
             .iloc[:n]
         )
         # return correlation_df.to_frame('correlation').reset_index()
 
         correlation_plot = alt.Chart(correlation_df.to_frame('correlation').reset_index()).mark_bar().encode(
-            y = alt.Y('index', sort = alt.EncodingSortField(field="correlation", order='descending')),
-            x = alt.X('correlation:Q', scale = alt.Scale(domain = [0,1]))
+            y=alt.Y('index', sort=alt.EncodingSortField(field="correlation", order='descending')),
+            x=alt.X('correlation:Q', scale=alt.Scale(domain=[0, 1]))
         )
         return correlation_plot
 
-    def plot_attribute_distribution(self, attribute_df, local = True):
+    def plot_attribute_distribution(self, attribute_df, local=True):
         if local:
             data_points = attribute_df.loc[self.instances, self.split_attribute_name].to_numpy()
         else:
@@ -236,12 +276,12 @@ class Node:
         kde = gaussian_kde(data_points)
         min, max = np.min(data_points), np.max(data_points)
         plot_df = pd.DataFrame().assign(
-            x = np.linspace(min, max, 100),
-            kde = lambda df: kde(df.x)
+            x=np.linspace(min, max, 100),
+            kde=lambda df: kde(df.x)
         )
         kde_chart = alt.Chart(plot_df).mark_area().encode(
-            x = alt.X('x',  title = self.split_attribute_name),
-            y = 'kde'
+            x=alt.X('x', title=self.split_attribute_name),
+            y='kde'
         )
 
         bounds = set()
@@ -251,14 +291,13 @@ class Node:
             if not np.isinf(upper):
                 bounds.add(upper)
 
-        bounds_df = pd.DataFrame(dict(threshold = list(bounds)))
+        bounds_df = pd.DataFrame(dict(threshold=list(bounds)))
 
         vline_chart = alt.Chart(bounds_df).mark_rule().encode(
-            x = 'threshold'
+            x='threshold'
         )
 
         return alt.layer(kde_chart, vline_chart)
-
 
     def __hash__(self):
         return hash((str(self.instances), self.split_attribute_name))
@@ -356,7 +395,8 @@ def sklearn_tree_to_nodes(tree, node_idx, instances, attribute_df):
         ]
         return Node(instances, children, attribute_df.columns[feature_idx])
 
-def data_df_to_quantiles(data_df, quantiles = None):
+
+def data_df_to_quantiles(data_df, quantiles=None):
     # q = np.concatenate([np.arange(0, 0.05, 0.01), np.arange(0.05, 0.96, 0.05), np.arange(0.95, 1.005, 0.01)])
     if quantiles is None:
         q = np.arange(0, 1.01, 0.05)
@@ -389,8 +429,8 @@ def data_df_to_quantiles(data_df, quantiles = None):
         .reset_index()
         .assign(
             quantiles=lambda x: x.lower_quantile.astype("str").str.zfill(2)
-            + "-"
-            + x.upper_quantile.astype("str").str.zfill(2)
+                                + "-"
+                                + x.upper_quantile.astype("str").str.zfill(2)
         )
         .drop(columns=["lower_quantile", "upper_quantile"])
     )
