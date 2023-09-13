@@ -54,6 +54,13 @@ class VisTree:
         self.all_leafs = np.array(all_leafs, dtype='object')
 
     def plot_tree(self, figsize=(20, 25)):
+        self.plot_subtree(self.root_node, figsize)
+
+    def plot_subtree(self, node, figsize=(20, 25)):
+        # convert node id to node if required
+        if isinstance(node, int):
+            node = self.get_node(node)
+
         import matplotlib.pyplot as plt
         # figure configuration
         fig = plt.figure(figsize=figsize)
@@ -62,7 +69,7 @@ class VisTree:
 
         # find all children in order
         leafs = []
-        queue = deque([self.root_node])
+        queue = deque([node])
         while len(queue) > 0:
             node = queue.pop()
             if node.is_leaf_node:
@@ -81,7 +88,6 @@ class VisTree:
         for leaf, (x, y) in positions.items():
             plt.text(x, y, leaf.node_id, horizontalalignment='center', verticalalignment='center',
                      bbox=dict(boxstyle="Circle, pad=0.35", facecolor='white'))
-
 
         # check which parents can be drawn
         # a parent can be drawn if all of its children have a known position
@@ -116,14 +122,13 @@ class VisTree:
             plt.plot([x_min - x_interval, x_min - x_interval], [y_min, y_max], color='black')
 
             # attribute text in the middle of the split
-            t=plt.text(x_min - x_interval, (y_min + y_max) / 2, f"{node_to_draw.split_attribute_name}",
+            plt.text(x_min - x_interval, (y_min + y_max) / 2, f"{node_to_draw.split_attribute_name}",
                      verticalalignment='center',
                      horizontalalignment='center', bbox={'facecolor': 'white', 'pad': 3})
 
             # plot node id in gray
-            plt.text(x_min - x_interval+10, (y_min + y_max) / 2, node_to_draw.node_id, verticalalignment='center',
-                     horizontalalignment='left', color = 'gray')
-
+            plt.text(x_min - x_interval + 10, (y_min + y_max) / 2, node_to_draw.node_id, verticalalignment='center',
+                     horizontalalignment='left', color='gray')
 
             # Save the position
             positions[node_to_draw] = (x_min - x_interval, (y_min + y_max) / 2)
