@@ -230,7 +230,7 @@ class Node:
         charts = []
         for lower, upper, child in self.children:
             charts.append(
-                child.plot_timeseries_quantiles(timeseries_df, raw = True).properties(title=self.bounds_to_split_str(lower, upper)))
+                child.plot_timeseries_quantiles(timeseries_df, raw = True).properties(title=self.bounds_to_split_str(lower, upper)).interactive(bind_x = False))
 
 
         return big_chart(alt.hconcat(*charts).resolve_scale(x='shared', y='shared', color='shared'))
