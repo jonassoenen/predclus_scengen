@@ -276,7 +276,7 @@ class Node:
 
     def plot_feature_correlations(self, attribute_df, n=5, local=True):
         if local:
-            data_df = attribute_df.loc[self.instances]
+            data_df = attribute_df.iloc[self.instances]
         else:
             data_df = attribute_df
         correlation_df = (
@@ -296,7 +296,7 @@ class Node:
 
     def plot_attribute_distribution(self, attribute_df, nb_of_bins = 'auto', bandwidth = None, kde = False, local=True):
         if local:
-            data_points = attribute_df.loc[self.instances, self.split_attribute_name].to_numpy()
+            data_points = attribute_df.iloc[self.instances].loc[:, self.split_attribute_name].to_numpy()
         else:
             data_points = attribute_df[self.split_attribute_name].to_numpy()
         if kde:
