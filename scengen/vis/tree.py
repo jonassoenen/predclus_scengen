@@ -214,6 +214,10 @@ class Node:
     def is_leaf_node(self):
         return self.children is None
 
+    @property
+    def nb_of_instances(self):
+        return self.instances.shape[0]
+
     def print(self, prefix):
         if self.is_leaf_node:
             print(f'{prefix} ⤇ leaf {self.node_id}')
@@ -226,8 +230,10 @@ class Node:
         charts = []
         for lower, upper, child in self.children:
             charts.append(
-                child.plot_timeseries_quantiles(timeseries_df).properties(title=self.bounds_to_split_str(lower, upper)))
-        return alt.hconcat(*charts).resolve_scale(x='shared', y='shared', color='shared')
+                child.plot_timeseries_quantiles(timeseries_df, raw = True).properties(title=self.bounds_to_split_str(lower, upper)))
+
+
+        return big_chart(alt.hconcat(*charts).resolve_scale(x='shared', y='shared', color='shared'))
 
     def plot_timeseries(self, timeseries, max_instances_to_show=10):
         relevant_timeseries = timeseries.iloc[self.instances[:max_instances_to_show]]
@@ -238,16 +244,18 @@ class Node:
             .to_frame('value')
             .reset_index()
         )
-        return alt.Chart(plot_df).mark_line().encode(
+        chart = alt.Chart(plot_df).mark_line().encode(
             x=alt.X('timestamp', axis=alt.Axis(format="%H:%M")),
             y='value',
             color=alt.Color('timeseries:Q', legend=None)
         )
+        node_text = 'node' if not self.is_leaf_node else 'leaf'
+        return big_chart(chart.properties(title = f"Examples from {node_text} {self.node_id}", width = 500), grid = True)
 
-    def plot_timeseries_quantiles(self, timeseries_df):
+    def plot_timeseries_quantiles(self, timeseries_df, raw = False):
         data_df = timeseries_df.iloc[self.instances]
         quantile_df = data_df_to_quantiles(data_df)
-        return (
+        chart =  (
             alt.Chart(quantile_df)
             .mark_area()
             .encode(
@@ -259,8 +267,14 @@ class Node:
                 color="quantiles:O",
             )
         )
+        node_text = 'node' if not self.is_leaf_node else 'leaf'
+        if raw:
+            return chart.properties(width = 500)
+        return big_chart(chart.properties(title = f'Quantiles of TS in {node_text} {self.node_id}', width = 500), grid = True)
 
-    def plot_feature_correlations(self, attribute_df, n=10, local=True):
+
+
+    def plot_feature_correlations(self, attribute_df, n=5, local=True):
         if local:
             data_df = attribute_df.loc[self.instances]
         else:
@@ -274,27 +288,42 @@ class Node:
         # return correlation_df.to_frame('correlation').reset_index()
 
         correlation_plot = alt.Chart(correlation_df.to_frame('correlation').reset_index()).mark_bar().encode(
-            y=alt.Y('index', sort=alt.EncodingSortField(field="correlation", order='descending')),
+            y=alt.Y('index', title = None, sort=alt.EncodingSortField(field="correlation", order='descending')),
             x=alt.X('correlation:Q', scale=alt.Scale(domain=[0, 1]))
         )
-        return correlation_plot
+        return big_chart(correlation_plot.properties(title = f"Corr of {self.split_attribute_name} with alternative splits"), grid = False)
 
-    def plot_attribute_distribution(self, attribute_df, local=True):
+
+    def plot_attribute_distribution(self, attribute_df, nb_of_bins = 'auto', bandwidth = None, kde = False, local=True):
         if local:
             data_points = attribute_df.loc[self.instances, self.split_attribute_name].to_numpy()
         else:
             data_points = attribute_df[self.split_attribute_name].to_numpy()
-        # for continuous calculate kde
-        kde = gaussian_kde(data_points)
-        min, max = np.min(data_points), np.max(data_points)
-        plot_df = pd.DataFrame().assign(
-            x=np.linspace(min, max, 100),
-            kde=lambda df: kde(df.x)
-        )
-        kde_chart = alt.Chart(plot_df).mark_area().encode(
-            x=alt.X('x', title=self.split_attribute_name),
-            y='kde'
-        )
+        if kde:
+            # for continuous calculate kde
+            kde = gaussian_kde(data_points, bw_method = bandwidth)
+            min, max = np.min(data_points), np.max(data_points)
+            plot_df = pd.DataFrame().assign(
+                x=np.linspace(min, max, 100),
+                kde=lambda df: kde(df.x)
+            )
+            dist_chart = alt.Chart(plot_df).mark_area().encode(
+                x=alt.X('x', title=self.split_attribute_name),
+                y='kde:Q'
+            )
+            text_height = plot_df.kde.max()
+        else:
+            # make histogram
+            values, boundaries = np.histogram(data_points, bins= nb_of_bins, density = False)
+            windows = np.lib.stride_tricks.sliding_window_view(boundaries, 2)
+            plot_df = pd.DataFrame(windows, columns = ['lower_bound', 'upper_bound']).assign(value = values)
+            dist_chart = alt.Chart(plot_df).mark_bar().encode(
+                x=alt.X('lower_bound', bin='binned', title = self.split_attribute_name),
+                x2='upper_bound',
+                y=alt.Y('value:Q', title = 'count')
+            )
+            text_height = values.max()
+
 
         bounds = set()
         for lower, upper, _ in self.children:
@@ -309,7 +338,14 @@ class Node:
             x='threshold'
         )
 
-        return alt.layer(kde_chart, vline_chart)
+        text_chart = alt.Chart(bounds_df).mark_text(angle  = 270, baseline = 'top', align = 'right', dy = 5, fontSize = 15).encode(
+
+            x = 'threshold',
+            y = alt.YValue(text_height*0.9),
+            text = alt.Text('threshold', format = '.2f'),
+        )
+
+        return big_chart(alt.layer(dist_chart, vline_chart, text_chart).properties(title = f"Split of node {self.node_id} on {self.split_attribute_name}"), grid = True)
 
     def __hash__(self):
         return hash((str(self.instances), self.split_attribute_name))
@@ -445,4 +481,17 @@ def data_df_to_quantiles(data_df, quantiles=None):
                                 + x.upper_quantile.astype("str").str.zfill(2)
         )
         .drop(columns=["lower_quantile", "upper_quantile"])
+    )
+
+def big_chart(chart, fontsize=20, grid = False):
+    return (
+        chart.configure_axis(
+            grid=grid,
+            labelFontSize=fontsize,
+            titleFontSize=fontsize,
+            offset=5,
+        )
+        .configure_title(fontSize=fontsize)
+        .configure_legend(titleFontSize=fontsize, labelFontSize=fontsize)
+        .configure_view(strokeWidth=0)
     )
