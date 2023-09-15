@@ -236,7 +236,9 @@ class Node:
         return big_chart(alt.hconcat(*charts).resolve_scale(x='shared', y='shared', color='shared'))
 
     def plot_timeseries(self, timeseries, max_instances_to_show=10):
-        relevant_timeseries = timeseries.iloc[self.instances[:max_instances_to_show]]
+        nb_instances_to_show = min(max_instances_to_show, self.nb_of_instances)
+        instances_to_show = np.random.choice(self.instances, nb_instances_to_show, replace = False)
+        relevant_timeseries = timeseries.iloc[instances_to_show]
         plot_df = (
             relevant_timeseries
             .stack()
@@ -346,6 +348,7 @@ class Node:
         )
 
         return big_chart(alt.layer(dist_chart, vline_chart).properties(title = f"Split of node {self.node_id} on {self.split_attribute_name}"), grid = True)
+
 
     def __hash__(self):
         return hash((str(self.instances), self.split_attribute_name))
