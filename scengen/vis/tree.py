@@ -226,11 +226,11 @@ class Node:
                 print(f"{prefix}({self.node_id}) {self.bounds_to_split_str(lower, upper)}")
                 child.print(prefix + '\t')
 
-    def plot_children(self, timeseries_df):
+    def plot_children(self, timeseries_df, all_quantiles = False):
         charts = []
         for lower, upper, child in self.children:
             charts.append(
-                child.plot_timeseries_quantiles(timeseries_df, raw = True).properties(title=self.bounds_to_split_str(lower, upper)).interactive(bind_x = False))
+                child.plot_timeseries_quantiles(timeseries_df, all = all_quantiles, raw = True).properties(title=self.bounds_to_split_str(lower, upper)).interactive(bind_x = False))
 
 
         return big_chart(alt.hconcat(*charts).resolve_scale(x='shared', y='shared', color='shared'))
