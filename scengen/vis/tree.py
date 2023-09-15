@@ -254,9 +254,14 @@ class Node:
         node_text = 'node' if not self.is_leaf_node else 'leaf'
         return big_chart(chart.properties(title = f"Examples from {node_text} {self.node_id}", width = 500), grid = True)
 
-    def plot_timeseries_quantiles(self, timeseries_df, raw = False):
+    def plot_timeseries_quantiles(self, timeseries_df, all = False, raw = False):
         data_df = timeseries_df.iloc[self.instances]
-        quantile_df = data_df_to_quantiles(data_df)
+
+        if all:
+            q = np.arange(0, 1.01, 0.05)
+        else:
+            q = np.arange(0.05, 0.96, 0.05)
+        quantile_df = data_df_to_quantiles(data_df, quantiles = q)
         chart =  (
             alt.Chart(quantile_df)
             .mark_area()
