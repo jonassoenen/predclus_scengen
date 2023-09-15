@@ -288,7 +288,7 @@ class Node:
         # return correlation_df.to_frame('correlation').reset_index()
 
         correlation_plot = alt.Chart(correlation_df.to_frame('correlation').reset_index()).mark_bar().encode(
-            y=alt.Y('index', title = None, sort=alt.EncodingSortField(field="correlation", order='descending')),
+            y=alt.Y('index', title = None, sort=alt.EncodingSortField(field="Rank correlation", order='descending')),
             x=alt.X('correlation:Q', scale=alt.Scale(domain=[0, 1]))
         )
         return big_chart(correlation_plot.properties(title = f"Corr of {self.split_attribute_name} with alternative splits"), grid = False)
@@ -345,7 +345,7 @@ class Node:
             text = alt.Text('threshold', format = '.2f'),
         )
 
-        return big_chart(alt.layer(dist_chart, vline_chart, text_chart).properties(title = f"Split of node {self.node_id} on {self.split_attribute_name}"), grid = True)
+        return big_chart(alt.layer(dist_chart, vline_chart).properties(title = f"Split of node {self.node_id} on {self.split_attribute_name}"), grid = True)
 
     def __hash__(self):
         return hash((str(self.instances), self.split_attribute_name))
