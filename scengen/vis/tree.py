@@ -284,7 +284,9 @@ class Node:
         # plot charts
         charts = []
         for child, description in relevant_children:
-            child.plot_timeseries_quantiles(all = all_quantiles, raw = True).properties(title=f"{child.node_name} {description}")
+            charts.append(
+                child.plot_timeseries_quantiles(all = all_quantiles, raw = True).properties(title=f"{child.node_name} {description}")
+            )
         return big_chart(alt.hconcat(*charts).resolve_scale(x='shared', y='shared', color='shared'))
 
 
