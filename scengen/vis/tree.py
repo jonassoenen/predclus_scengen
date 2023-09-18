@@ -259,8 +259,12 @@ class Node:
     def plot_children(self, all_quantiles = False):
         charts = []
         for lower, upper, child in self.children:
+            if child.is_leaf_node:
+                node_name = f"Leaf {child.node_id}"
+            else:
+                node_name = F"Node {child.node_id}"
             charts.append(
-                child.plot_timeseries_quantiles(all = all_quantiles, raw = True).properties(title=self.bounds_to_split_str(lower, upper)).interactive(bind_x = False))
+                child.plot_timeseries_quantiles(all = all_quantiles, raw = True).properties(title=f"{node_name} {self.bounds_to_split_str(lower, upper)}").interactive(bind_x = False))
 
 
         return big_chart(alt.hconcat(*charts).resolve_scale(x='shared', y='shared', color='shared'))
@@ -268,7 +272,7 @@ class Node:
     def plot_timeseries(self, max_instances_to_show=10):
         nb_instances_to_show = min(max_instances_to_show, self.nb_of_instances)
         instances_to_show = np.random.choice(self.instances, nb_instances_to_show, replace = False)
-        relevant_timeseries = self.instance_timeseries_df.reset_index(drop = True)
+        relevant_timeseries = self.timeseries_df.iloc[instances_to_show].reset_index(drop = True)
         plot_df = (
             relevant_timeseries
             .stack()
@@ -341,7 +345,7 @@ class Node:
             x = 'nb_of_instances'
         )
 
-        text_chart = bar_chart.mark_text(align = 'left', baseline = 'middle').encode(
+        text_chart = bar_chart.mark_text(align = 'left', baseline = 'middle', fontSize = 20).encode(
             text = 'nb_of_instances'
         )
 
@@ -543,6 +547,7 @@ def big_chart(chart, fontsize=20, grid = False):
             labelFontSize=fontsize,
             titleFontSize=fontsize,
             offset=5,
+            labelLimit = 300
         )
         .configure_title(fontSize=fontsize)
         .configure_legend(titleFontSize=fontsize, labelFontSize=fontsize)
