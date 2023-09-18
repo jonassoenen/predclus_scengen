@@ -191,7 +191,7 @@ class Node:
             return
         for lower, upper, child in self.children:
             if parent_description is not None:
-                description = parent_description + ' ∧ ' + self.bounds_to_split_str(lower, upper)
+                description = parent_description + ' & ' + self.bounds_to_split_str(lower, upper)
             else:
                 description = self.bounds_to_split_str(lower, upper)
             child.init_descriptions(description)
@@ -245,6 +245,13 @@ class Node:
         return self.children is None
 
     @property
+    def node_name(self):
+        if self.is_leaf_node:
+            return f"Leaf {self.node_id}"
+        else:
+            return f"Node {self.node_id}"
+
+    @property
     def nb_of_instances(self):
         return self.instances.shape[0]
 
@@ -256,15 +263,36 @@ class Node:
                 print(f"{prefix}({self.node_id}) {self.bounds_to_split_str(lower, upper)}")
                 child.print(prefix + '\t')
 
+    def _get_subtree_children_w_description(self, max_depth):
+        queue = deque([(self, 0, None)])
+        relevant_children = []
+        while len(queue) > 0:
+            node, current_depth, current_description = queue.pop()
+            if current_depth == max_depth:
+                relevant_children.append((node, current_description))
+            elif current_depth < max_depth:
+                for lower, upper, child in node.children:
+                    description = node.bounds_to_split_str(lower, upper)
+                    if current_description is not None:
+                        description = current_description + ' & ' + description
+                    queue.append((child, current_depth + 1, description))
+        return relevant_children
+    def plot_children_subtree(self, max_depth = 2, all_quantiles = False):
+        # get relevant children
+        relevant_children = self._get_subtree_children_w_description(max_depth)
+
+        # plot charts
+        charts = []
+        for child, description in relevant_children:
+            child.plot_timeseries_quantiles(all = all_quantiles, raw = True).properties(title=f"{child.node_name} {description}")
+        return big_chart(alt.hconcat(*charts).resolve_scale(x='shared', y='shared', color='shared'))
+
+
     def plot_children(self, all_quantiles = False):
         charts = []
         for lower, upper, child in self.children:
-            if child.is_leaf_node:
-                node_name = f"Leaf {child.node_id}"
-            else:
-                node_name = F"Node {child.node_id}"
             charts.append(
-                child.plot_timeseries_quantiles(all = all_quantiles, raw = True).properties(title=f"{node_name} {self.bounds_to_split_str(lower, upper)}").interactive(bind_x = False))
+                child.plot_timeseries_quantiles(all = all_quantiles, raw = True).properties(title=f"{child.node_name} {self.bounds_to_split_str(lower, upper)}").interactive(bind_x = False))
 
 
         return big_chart(alt.hconcat(*charts).resolve_scale(x='shared', y='shared', color='shared'))
@@ -333,6 +361,24 @@ class Node:
             x=alt.X('correlation:Q', scale=alt.Scale(domain=[0, 1]))
         )
         return big_chart(correlation_plot.properties(title = f"Corr of {self.split_attribute_name} with alternative splits"), grid = False)
+
+    def plot_nb_of_instances_per_child_subtree(self, max_depth = 2):
+        relevant_children = self._get_subtree_children_w_description(max_depth)
+
+        data_df = pd.DataFrame(columns=['nb_of_instances', 'lower_bound'])
+        for idx, (child, description) in enumerate(relevant_children):
+            data_df.loc[description] = child.nb_of_instances, idx
+
+        bar_chart = alt.Chart(data_df.reset_index(), title='#Instances in child nodes').mark_bar().encode(
+            y=alt.Y('index', title=None, sort=alt.EncodingSortField(field="lower_bound", order='ascending')),
+            x='nb_of_instances'
+        )
+
+        text_chart = bar_chart.mark_text(align='left', baseline='middle', fontSize=20).encode(
+            text='nb_of_instances'
+        )
+
+        return big_chart(alt.layer(bar_chart, text_chart))
 
     def plot_nb_of_instances_per_child(self):
         data_df = pd.DataFrame(columns = ['nb_of_instances', 'lower_bound'])
