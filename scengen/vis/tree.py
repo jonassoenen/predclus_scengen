@@ -428,7 +428,7 @@ class Node:
 
 def get_tree_with_compressed_splits(tree_node: Node):
     if tree_node.is_leaf_node:
-        return copy.deepcopy(tree_node)
+        return copy.copy(tree_node)
 
     # check whether we can compress the current split
     # the split can be compressed if one of the children splits on the same attribute as this node
