@@ -271,7 +271,7 @@ class Node:
             if current_depth == max_depth:
                 relevant_children.append((node, current_description))
             elif current_depth < max_depth:
-                for lower, upper, child in node.children:
+                for lower, upper, child in reversed(node.children):
                     description = node.bounds_to_split_str(lower, upper)
                     if current_description is not None:
                         description = current_description + ' & ' + description
