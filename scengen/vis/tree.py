@@ -330,7 +330,15 @@ class Node:
         )
         return big_chart(correlation_plot.properties(title = f"Corr of {self.split_attribute_name} with alternative splits"), grid = False)
 
-
+    def plot_nb_of_instances_per_child(self):
+        data_df = pd.DataFrame(columns = ['nb_of_instances'])
+        for lower, upper, child in self.children:
+            string = child.bounds_to_split_str(lower, upper, include_name = True)
+            data_df.loc[string] = child.nb_of_instances
+        return alt.Chart(data_df.reset_index(), title = '#Instances in child nodes').mark_bar().encode(
+            y = alt.Y('index', title = None),
+            x = 'nb_of_instances'
+        )
     def plot_attribute_distribution(self,  nb_of_bins = 'auto', bandwidth = None, kde = False, local=True):
         if local:
             data_points = self.instance_attribute_df.loc[:, self.split_attribute_name].to_numpy()
