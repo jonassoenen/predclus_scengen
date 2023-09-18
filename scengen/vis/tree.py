@@ -20,6 +20,9 @@ class VisTree:
         self.root_node.init_data(attribute_df, timeseries_df)
         self.set_node_ids()
 
+        self.attribute_df = attribute_df
+        self.timeseries_df = timeseries_df
+
     @classmethod
     def from_sklearn_tree(cls, sklearn_tree, attribute_df, timeseries_df):
         instances = np.arange(0, attribute_df.shape[0], 1)
@@ -154,7 +157,7 @@ class VisTree:
         self.root_node.print(prefix='')
 
     def compress_tree(self):
-        return VisTree(get_tree_with_compressed_splits(self.root_node))
+        return VisTree(get_tree_with_compressed_splits(self.root_node), self.attribute_df, self.timeseries_df)
 
     def __eq__(self, other):
         if not isinstance(other, VisTree):
