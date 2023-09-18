@@ -11,8 +11,8 @@ class PredClusGenerator:
         self._clustering = None
         self._clustering_dict = None
 
-    def to_visualization_tree(self, attribute_df):
-        return VisTree.from_sklearn_tree(self.tree.tree_, attribute_df)
+    def to_visualization_tree(self, attribute_df, timeseries_df):
+        return VisTree.from_sklearn_tree(self.tree.tree_, attribute_df, timeseries_df)
     @property
     def clustering(self):
         """
