@@ -100,7 +100,7 @@ class VisTree:
                 plt.text(x, y, leaf.node_id, horizontalalignment='center', verticalalignment='center',
                          bbox=dict(boxstyle="Circle, pad=0.35", facecolor='white'))
             else:
-                plt.text(x,y, 'tree cut...', verticalalignment='center',
+                plt.text(x,y, f'tree cut at node {leaf.node_id}', verticalalignment='center',
                      horizontalalignment='center', bbox={'facecolor': 'white', 'pad': 3})
 
 
