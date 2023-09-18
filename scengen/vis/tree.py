@@ -195,8 +195,9 @@ class Node:
     def init_data(self, attribute_df, timeseries_df):
         self.attribute_df = attribute_df
         self.timeseries_df = timeseries_df
-        for _, _, child in self.children:
-            child.init_data(attribute_df, timeseries_df)
+        if not self.is_leaf_node:
+            for _, _, child in self.children:
+                child.init_data(attribute_df, timeseries_df)
 
     def bounds_to_split_str(self, lower, upper, include_name=True):
         name = self.split_attribute_name if include_name else ' '
