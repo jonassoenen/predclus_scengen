@@ -333,7 +333,7 @@ class Node:
     def plot_nb_of_instances_per_child(self):
         data_df = pd.DataFrame(columns = ['nb_of_instances'])
         for lower, upper, child in self.children:
-            string = child.bounds_to_split_str(lower, upper, include_name = True)
+            string = self.bounds_to_split_str(lower, upper, include_name = True)
             data_df.loc[string] = child.nb_of_instances
         return alt.Chart(data_df.reset_index(), title = '#Instances in child nodes').mark_bar().encode(
             y = alt.Y('index', title = None),
