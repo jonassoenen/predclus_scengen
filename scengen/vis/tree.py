@@ -9,21 +9,22 @@ from scipy.stats import gaussian_kde
 
 
 class VisTree:
-    def __init__(self, root_node):
+    def __init__(self, root_node, attribute_df, timeseries_df):
         self.root_node = root_node
 
         self.all_nodes = None
         self.all_leafs = None
 
         # self.root_node.check_validity()
-        self.root_node.init_descriptions(parent_description='')
+        self.root_node.init_descriptions(parent_description=None)
+        self.root_node.init_data(attribute_df, timeseries_df)
         self.set_node_ids()
 
     @classmethod
-    def from_sklearn_tree(cls, sklearn_tree, attribute_df):
+    def from_sklearn_tree(cls, sklearn_tree, attribute_df, timeseries_df):
         instances = np.arange(0, attribute_df.shape[0], 1)
         root_node = sklearn_tree_to_nodes(sklearn_tree, 0, instances, attribute_df)
-        return VisTree(root_node)
+        return VisTree(root_node, attribute_df, timeseries_df)
 
     def get_node(self, node_id):
         return self.all_nodes[node_id]
@@ -64,6 +65,10 @@ class VisTree:
         import matplotlib.pyplot as plt
         # figure configuration
         fig = plt.figure(figsize=figsize)
+        if node is not self.root_node:
+            plt.title(f"Subtree of node {node.node_id} with description {node.description}")
+        else:
+            plt.title(f"Full tree")
 
         plt.axis('off')
 
@@ -172,13 +177,26 @@ class Node:
         self.description: Optional[str] = None
         self.node_id: Optional[int] = None
 
+        self.attribute_df = None
+        self.timeseries_df = None
+
     def init_descriptions(self, parent_description):
-        self.description = parent_description
+
+        self.description = "" if parent_description is None else parent_description
+
         if self.is_leaf_node:
             return
         for lower, upper, child in self.children:
-            description = parent_description + ' ∧ ' + self.bounds_to_split_str(lower, upper)
+            if parent_description is not None:
+                description = parent_description + ' ∧ ' + self.bounds_to_split_str(lower, upper)
+            else:
+                description = self.bounds_to_split_str(lower, upper)
             child.init_descriptions(description)
+    def init_data(self, attribute_df, timeseries_df):
+        self.attribute_df = attribute_df
+        self.timeseries_df = timeseries_df
+        for _, _, child in self.children:
+            child.init_data(attribute_df, timeseries_df)
 
     def bounds_to_split_str(self, lower, upper, include_name=True):
         name = self.split_attribute_name if include_name else ' '
@@ -211,6 +229,14 @@ class Node:
             raise ValueError("Trying to set parent that doesn't have this node as child")
 
     @property
+    def instance_timeseries_df(self):
+        return self.timeseries_df.iloc[self.instances]
+
+    @property
+    def instance_attribute_df(self):
+        return self.attribute_df.iloc[self.instances]
+
+    @property
     def is_leaf_node(self):
         return self.children is None
 
@@ -226,19 +252,19 @@ class Node:
                 print(f"{prefix}({self.node_id}) {self.bounds_to_split_str(lower, upper)}")
                 child.print(prefix + '\t')
 
-    def plot_children(self, timeseries_df, all_quantiles = False):
+    def plot_children(self, all_quantiles = False):
         charts = []
         for lower, upper, child in self.children:
             charts.append(
-                child.plot_timeseries_quantiles(timeseries_df, all = all_quantiles, raw = True).properties(title=self.bounds_to_split_str(lower, upper)).interactive(bind_x = False))
+                child.plot_timeseries_quantiles(self.timeseries_df, all = all_quantiles, raw = True).properties(title=self.bounds_to_split_str(lower, upper)).interactive(bind_x = False))
 
 
         return big_chart(alt.hconcat(*charts).resolve_scale(x='shared', y='shared', color='shared'))
 
-    def plot_timeseries(self, timeseries, max_instances_to_show=10):
+    def plot_timeseries(self, max_instances_to_show=10):
         nb_instances_to_show = min(max_instances_to_show, self.nb_of_instances)
         instances_to_show = np.random.choice(self.instances, nb_instances_to_show, replace = False)
-        relevant_timeseries = timeseries.iloc[instances_to_show]
+        relevant_timeseries = self.instance_timeseries_df.reset_index(drop = True)
         plot_df = (
             relevant_timeseries
             .stack()
@@ -254,8 +280,8 @@ class Node:
         node_text = 'node' if not self.is_leaf_node else 'leaf'
         return big_chart(chart.properties(title = f"Examples from {node_text} {self.node_id}", width = 500), grid = True)
 
-    def plot_timeseries_quantiles(self, timeseries_df, all = False, raw = False):
-        data_df = timeseries_df.iloc[self.instances]
+    def plot_timeseries_quantiles(self, all = False, raw = False):
+        data_df = self.instance_timeseries_df
 
         if all:
             q = np.arange(0, 1.01, 0.05)
@@ -281,11 +307,11 @@ class Node:
 
 
 
-    def plot_feature_correlations(self, attribute_df, n=5, local=True):
+    def plot_feature_correlations(self, n=5, local=True):
         if local:
-            data_df = attribute_df.iloc[self.instances]
+            data_df = self.instance_attribute_df
         else:
-            data_df = attribute_df
+            data_df = self.attribute_df
         correlation_df = (
             data_df.corrwith(data_df[self.split_attribute_name], method='spearman')
             .drop(self.split_attribute_name)
@@ -301,11 +327,11 @@ class Node:
         return big_chart(correlation_plot.properties(title = f"Corr of {self.split_attribute_name} with alternative splits"), grid = False)
 
 
-    def plot_attribute_distribution(self, attribute_df, nb_of_bins = 'auto', bandwidth = None, kde = False, local=True):
+    def plot_attribute_distribution(self,  nb_of_bins = 'auto', bandwidth = None, kde = False, local=True):
         if local:
-            data_points = attribute_df.iloc[self.instances].loc[:, self.split_attribute_name].to_numpy()
+            data_points = self.instance_attribute_df.loc[:, self.split_attribute_name].to_numpy()
         else:
-            data_points = attribute_df[self.split_attribute_name].to_numpy()
+            data_points = self.attribute_df[self.split_attribute_name].to_numpy()
         if kde:
             # for continuous calculate kde
             kde = gaussian_kde(data_points, bw_method = bandwidth)
