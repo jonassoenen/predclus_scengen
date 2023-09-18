@@ -285,7 +285,7 @@ class Node:
         charts = []
         for child, description in relevant_children:
             charts.append(
-                child.plot_timeseries_quantiles(all = all_quantiles, raw = True).properties(title=f"{child.node_name} {description}")
+                child.plot_timeseries_quantiles(all = all_quantiles, raw = True).properties(title=f"{child.node_name}\n{description}")
             )
         return big_chart(alt.hconcat(*charts).resolve_scale(x='shared', y='shared', color='shared'))
 
@@ -294,7 +294,7 @@ class Node:
         charts = []
         for lower, upper, child in self.children:
             charts.append(
-                child.plot_timeseries_quantiles(all = all_quantiles, raw = True).properties(title=f"{child.node_name} {self.bounds_to_split_str(lower, upper)}").interactive(bind_x = False))
+                child.plot_timeseries_quantiles(all = all_quantiles, raw = True).properties(title=f"{child.node_name}\n{self.bounds_to_split_str(lower, upper)}").interactive(bind_x = False))
 
 
         return big_chart(alt.hconcat(*charts).resolve_scale(x='shared', y='shared', color='shared'))
